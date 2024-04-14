@@ -1,9 +1,8 @@
 import dash
-from dash import dcc, html, dash_table, callback, Output, Input
+from dash import dcc, html, Output, Input, State
 import dash_bootstrap_components as dbc
 from data_processing import load_data, preprocess_data
-from visualizations import create_figure
-from analytics import analyze_data
+from visualizations import create_figures
 
 app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
 
@@ -11,38 +10,35 @@ app.layout = dbc.Container([
     dcc.Upload(
         id='upload-data',
         children=html.Div(['Drag and Drop or ', html.A('Select Files')]),
-        style={'width': '100%', 'height': '60px', 'lineHeight': '60px',
-               'borderWidth': '1px', 'borderStyle': 'dashed', 'borderRadius': '5px',
-               'textAlign': 'center', 'margin': '10px'},
-        multiple=False
+        style={
+            'width': '100%', 'height': '60px', 'lineHeight': '60px',
+            'borderWidth': '1px', 'borderStyle': 'dashed', 'borderRadius': '5px',
+            'textAlign': 'center', 'margin': '10px'
+        },
+        multiple=False  # Allows only one file to be uploaded
     ),
-    html.Div(id='output-data-upload'),
-    html.Div(id='analytics-output')
+    html.Div(id='status-indicators', style={'margin': '20px'}),
+    html.Div(id='graph-container')  # This will hold the graphs
 ])
 
 @app.callback(
-    Output('output-data-upload', 'children'),
-    Input('upload-data', 'contents')
+    [Output('graph-container', 'children'), Output('status-indicators', 'children')],
+    [Input('upload-data', 'contents')],
+    [State('upload-data', 'filename'), State('upload-data', 'last_modified')]
 )
-def update_output(contents):
-    if contents is None:
-        return html.Div()
-    df = load_data(contents)
-    df = preprocess_data(df)
-    figure = create_figure(df)
-    return dcc.Graph(figure=figure)
-
-@app.callback(
-    Output('analytics-output', 'children'),
-    Input('upload-data', 'contents')
-)
-def update_analytics(contents):
-    if contents is None:
-        return html.Div()
-    df = load_data(contents)
-    df = preprocess_data(df)
-    results = analyze_data(df)
-    return html.Div([html.P(result) for result in results])
+def update_output(contents, filename, last_modified):
+    if contents is not None:
+        content_type, content_string = contents.split(';base64,')
+        if 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' in content_type:
+            df = load_data(content_string, content_type)
+            df = preprocess_data(df)
+            figures = create_figures(df)
+            graphs = [dcc.Graph(figure=fig) for fig in figures]
+            return graphs, f'Loaded {len(figures)} graphs from the uploaded data.'
+        else:
+            return [], 'Unsupported file format.'
+    else:
+        return [], 'No data uploaded yet.'
 
 if __name__ == '__main__':
     app.run_server(debug=True)
